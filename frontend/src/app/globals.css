@@ -1,0 +1,95 @@
+@import "leaflet/dist/leaflet.css";
+@import "tailwindcss";
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --background: #1a1d21;
+  --foreground: #171717;
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #a3a3a3; /* gris medio */
+    border-radius: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background-color: #f1f1f1; /* gris claro */
+  }
+
+  .custom-scrollbar {
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: #a3a3a3 #f1f1f1;
+  }
+  .custom-scrollbar::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
+@layer utilities {
+  /* Sombra azul del botón */
+  .btn-glow:hover {
+    box-shadow:
+      0 0 4px #60a5fa,
+      0 0 8px #60a5fa,
+      0 0 12px #60a5fa;
+  }
+
+  /* Glow blanco para el texto */
+  .text-glow {
+    text-shadow: 0 0 4px white, 0 0 8px white, 0 0 12px white;
+  }
+
+  .group:hover .group-hover\:text-glow {
+    text-shadow: 0 0 4px white, 0 0 8px white, 0 0 12px white;
+  }
+}
+
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-brand-blue: #213388;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #fffdf6;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+.list article:nth-child(odd) {
+  @apply bg-gray-100;
+}
+
+.list article:nth-child(even) {
+  @apply bg-gray-50;
+}

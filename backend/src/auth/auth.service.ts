@@ -5,7 +5,6 @@ import { JwtService } from '@nestjs/jwt';
 import { Response, Request } from 'express';
 import * as cookie from 'cookie';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Company } from './entities/Company.entity';
 import { Repository } from 'typeorm';
 
 @Injectable()
@@ -13,7 +12,6 @@ export class AuthService {
     private readonly traccarApiUrl = process.env.My_Ip;
 
     constructor(private readonly jwtService: JwtService,
-        @InjectRepository(Company) private companyRepository: Repository<Company>,
     ) { }
     getDataFromCookie(req: Request): any {
         if (!req.headers.cookie) {
@@ -30,7 +28,6 @@ export class AuthService {
             });
             return decodedPayload;
         } catch (error) {
-            console.error('Error al obtener los datos de la cookie:', error);
             throw new HttpException('Error al obtener los datos de la cookie', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -39,6 +36,32 @@ export class AuthService {
         const authHeader = 'Basic ' + btoa(`${username}:${password}`);
 
         return authHeader;
+    }
+
+    async getUserByName(username: string, req: Request): Promise<any>{
+        if (!username) {
+            throw new HttpException('You cannot send empty fields', HttpStatus.NOT_ACCEPTABLE);
+        }
+        try {
+            const decodedPayload = this.getDataFromCookie(req);
+            const authHeader = this.authHeader(decodedPayload.emailUser, decodedPayload.passwordUser);
+            // Configurar los headers de autenticación
+            const headers = {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+            };
+            // Realizar la solicitud GET a la API de Traccar para obtener los usuarios
+            const response = await axios.get(`${this.traccarApiUrl}/api/users`, { headers });
+            const users = response.data;
+            // Buscar el usuario por username
+            const user = users.find((user: any) => user.name === username);
+            if (!user) {
+                throw new HttpException('Usuario no encontrado', HttpStatus.NOT_FOUND);
+            }
+            return user;
+        } catch (error) {
+            throw new HttpException('Error al obtener el usuario', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     async getUserByEmail(email: string, password: string): Promise<any> {
@@ -62,18 +85,9 @@ export class AuthService {
             }
             return user;
         } catch (error) {
-            console.error('Error al obtener el usuario por email:', error);
-            throw new HttpException('Error al obtener el usuario', HttpStatus.INTERNAL_SERVER_ERROR);
+        throw new HttpException('Error al obtener el usuario', HttpStatus.INTERNAL_SERVER_ERROR);
 
         }
-    }
-
-    async findCompanyById(id: number) {
-        return await this.companyRepository.findOne({ where: { idCompany: id } });
-    }
-
-    async findCompanyByUsername(companyName: string) {
-        return await this.companyRepository.findOne({ where: { companyName } });
     }
 
     async login(email: string, password: string, res: Response): Promise<any> {

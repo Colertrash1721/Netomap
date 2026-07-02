@@ -22,16 +22,18 @@ export default function useLoginForm() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      const { username, password } = handleInputs;
+      const { username, password } = handleInputs;  
       const loginResponse = await loginService(username, password);
       console.log(loginResponse);
+      localStorage.setItem("userId", loginResponse.user.id);
       localStorage.setItem("username", loginResponse.user.name);
       localStorage.setItem("email", loginResponse.user.email);
       localStorage.setItem("token", loginResponse.token);
       localStorage.setItem("rol", loginResponse.user.administrator);
       setsuccessMessage("✅ Autenticación completa");
       router.push("/tracking_view");
-
+      console.log(loginResponse.user.administrator);
+      
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
         console.log(error.response?.data);

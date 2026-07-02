@@ -16,6 +16,46 @@ export class DevicesController {
   }
 
   /**
+   * GET ALL/devices/BD
+   * Obtiene todos los dispositivos de esta cuenta desde la base de datos, incluyendo los que no estan asignados a este usuario
+   */
+  @Get('all/BD')
+  getAllDevicesFromDB(@Req() req: Request) {
+    console.log("Llamando a todos los dispositivos");
+    
+    return this.devicesService.getAllDevicesFromBD(req);
+  }
+
+  /**
+   * POST /devices/asignUserToDevice
+   * Envia un comando para asignar el usuario al dispositivo y si ya hay otro asignado lo elimina
+   */
+  @Post('asignUserToDevice')
+  asignUserToDevice(@Req() Req: Request,
+    @Body() body: { deviceName: string, userId: number }) {
+    const { deviceName, userId } = body;
+    return this.devicesService.asignUserToDevice(Req, deviceName, userId)
+  }
+  
+  /**
+   * GET /devices/assigned/BD
+   * Obtiene todos los dispositivos asignados a este usuario desde la base de datos
+   */
+  @Get('assigned/BD')
+  getAssignedDevicesFromDB(@Req() req: Request) { 
+    return this.devicesService.getDeviceByUserIdFromBD(req);
+  }
+
+  /**
+   * GET /devices/sincronizeDB
+   * Sincroniza la base de datos con los dispositivos de Traccar, eliminando los que no existan en Traccar y añadiendo los nuevos
+   */
+  @Get('sincronizeDB')
+  sincronizeDB(@Req() req: Request) {
+    return this.devicesService.sincronizeDeviceToDB();
+  }
+
+  /**
    * GET /devices/drivers
    * Obtiene todos los conductores de esta cuenta desde Traccar
    */
@@ -80,8 +120,8 @@ export class DevicesController {
   @Post('asignDriverToDevice')
   asignDriverToDevice(@Req() Req: Request,
     @Body() body: { driverName: string, deviceName: string }) {
-      const {driverName, deviceName} = body;
-      return this.devicesService.asignDriverToDevice(Req, driverName, deviceName)
+    const { driverName, deviceName } = body;
+    return this.devicesService.asignDriverToDevice(Req, driverName, deviceName)
   }
 
   /**
@@ -89,8 +129,8 @@ export class DevicesController {
    */
   @Post('asignDeviceToUser')
   asignDeviceToUser(@Req() Req: Request,
-  @Body() body: {deviceId: number}){
-    const {deviceId} = body;
+    @Body() body: { deviceId: number }) {
+    const { deviceId } = body;
     return this.devicesService.asignDeviceToUser(Req, deviceId)
   }
 
@@ -99,8 +139,8 @@ export class DevicesController {
    */
   @Post('asignDriverToUser')
   asignDriverToUser(@Req() Req: Request,
-  @Body() body: {driverId: number}){
-    const {driverId} = body;
+    @Body() body: { driverId: number }) {
+    const { driverId } = body;
     return this.devicesService.asignDriverToUser(Req, driverId)
   }
 }

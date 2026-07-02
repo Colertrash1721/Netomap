@@ -3,10 +3,11 @@ import { DriverService } from './driver.service';
 import { DriverController } from './driver.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Drivers } from './entities/driver.entity';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Drivers]),
+    TypeOrmModule.forFeature([Drivers]), AuthModule
   ],
   controllers: [DriverController],
   providers: [DriverService],

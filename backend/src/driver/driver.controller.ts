@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Req } from '@nestjs/common';
+import { Request } from 'express';
 import { DriverService } from './driver.service';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
@@ -8,13 +9,18 @@ export class DriverController {
   constructor(private readonly driverService: DriverService) {}
 
   @Post()
-  create(@Body() createDriverDto: CreateDriverDto) {
-    return this.driverService.create(createDriverDto);
+  create(@Body() createDriverDto: CreateDriverDto, @Req() req: Request) {
+    return this.driverService.create(createDriverDto, req);
   }
 
   @Get()
   findAll() {
     return this.driverService.findAll();
+  }
+  
+  @Get('user/:userId')
+  findByUserId(@Param('userId') userId: string) {
+    return this.driverService.findDriversByUserId(+userId);
   }
 
   @Get(':id')

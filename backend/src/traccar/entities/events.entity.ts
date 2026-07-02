@@ -20,7 +20,4 @@ export class Events {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   eventDate: Date;
-
-  @Column({type: 'int', nullable: true})
-  eventIntegrationId: number;
 }

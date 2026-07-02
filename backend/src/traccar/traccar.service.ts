@@ -24,8 +24,8 @@ export class TraccarService {
   private readonly TRACCAR_AUTH_TOKEN = process.env.My_Token;
 
   constructor(
-     @Inject(forwardRef(() => EventsGateway))
-  private readonly eventsGateway: EventsGateway,
+    @Inject(forwardRef(() => EventsGateway))
+    private readonly eventsGateway: EventsGateway,
     @InjectRepository(Events) private eventRepository: Repository<Events>,
     private readonly deviceService: DevicesService,
     private readonly routeService: RoutesService,
@@ -96,13 +96,10 @@ export class TraccarService {
   // traccar.service.ts (fragmento)
   async createEvent(event: events) {
     try {
-      console.log("Intentando reiniciar evento");
-
       if (!event?.id) {
         console.warn('⚠️ Evento sin `id` válido, ignorando:', event);
         return;
       }
-      console.log(event.id);
 
       if (!event?.deviceId) {
         console.warn('⚠️ Evento sin `deviceId`, ignorando:', event);
@@ -124,7 +121,7 @@ export class TraccarService {
           idEvent: event.id,
           idRoute: route.idRute,   // puede ser null
           deviceName,
-          eventType: event.attributes?.alarm ?? null, // puede ser null
+          eventType: event.attributes?.message ?? event.type, // puede ser null
         });
         await this.eventRepository.upsert(toSave, ['idEvent']);
 
@@ -135,7 +132,7 @@ export class TraccarService {
         idEvent: event.id,
         idRoute: 0,
         deviceName,
-        eventType: event.attributes?.alarm ?? null, // puede ser null
+        eventType: event.attributes?.message ?? event.type,
       });
       console.log(toSave);
 
@@ -228,31 +225,12 @@ export class TraccarService {
     return updated;
   }
 
-  async asignEventIntegrationToEventById(idEvent: number, eventIntegrationId: number) {
-    if (!Number.isFinite(idEvent) || idEvent <= 0) {
-      throw new HttpException('idEvent inválido', HttpStatus.BAD_REQUEST);
+  async getUsersFromTraccar(){
+    try {
+      const response = await axios.get(`${this.traccarApiUrl}/users`, { headers: this.getHeaders(this.TRACCAR_USER!, this.TRACCAR_PASS!) });
+      return response.data;
+    } catch (error) {
+      throw new HttpException('Error al obtener usuarios de Traccar', HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
-    if (!Number.isFinite(eventIntegrationId) || eventIntegrationId <= 0) {
-      throw new HttpException('eventIntegrationId inválido', HttpStatus.BAD_REQUEST);
-    }
-
-    const result = await this.eventRepository.update(
-      { idEvent },
-      { eventIntegrationId },
-    );
-
-    if (!result.affected) {
-      throw new HttpException(
-        `Evento no encontrado (idEvent=${idEvent})`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    return {
-      message: '✅ eventIntegrationId asignado correctamente',
-      idEvent,
-      eventIntegrationId,
-    };
   }
 }

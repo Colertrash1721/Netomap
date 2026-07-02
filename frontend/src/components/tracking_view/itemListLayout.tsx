@@ -5,7 +5,8 @@ import ItemList from './itemList';
 import useSound from 'use-sound';
 
 import { fetchAssignedDrivers, fetchDevices, fetchDrivers, fetchPositions } from '@/services/traccar/fetchDevices';
-import { AssignedDriver, Device, Event, Position } from '@/types/traccar';
+import { Device, Event, Position } from '@/types/traccar';
+import { useDevicesQuery, usePositionQuery } from '@/hooks/devices/useDevice'
 import { useTraccarSocket } from '@/hooks/tracking/useTraccarDevice';
 import { deleteRouteByDeviceName } from '@/services/routes/deleteRoute';
 
@@ -14,10 +15,17 @@ type props = {
 };
 
 export default function ItemListLayout({ filter }: props) {
-  const [devices, setDevices] = useState<Device[]>([]);
   const [drivers, setDrivers] = useState([]);
-  const [assigned, setAssigned] = useState<AssignedDriver[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
+  const rol = typeof window !== 'undefined' ? localStorage.getItem("rol") : null;
+  const userId = typeof window !== 'undefined'
+    ? parseInt(localStorage.getItem("userId") || "0", 10)
+    : 0;
+  const { data, isLoading, error } = useDevicesQuery(rol, userId);
+
+  const { data: positionsData } = usePositionQuery();
+  const devices = data?.devices || [];
+  const positions = positionsData || [];
+  const assigned = data?.assignedDrivers || [];
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<Event[]>([]);
   const [gatewayData, setGatewayData] = useState<any>(null);
@@ -26,19 +34,7 @@ export default function ItemListLayout({ filter }: props) {
   const [playNotification] = useSound('/sound/notification.mp3', { volume: 0.5 });
   const [playAlarm] = useSound('/sound/alarma.mp3', { volume: 1 });
 
-  const loadAll = async () => {
-    const [d, dr, a, p] = await Promise.all([
-      fetchDevices(),
-      fetchDrivers(),
-      fetchAssignedDrivers(),
-      fetchPositions(),
-    ]);
-    setDevices(d);
-    setDrivers(dr);
-    setAssigned(a);
-    setPositions(p);
-    setLoading(false);
-  };
+
 
   useEffect(() => {
     const unlock = () => {
@@ -47,22 +43,15 @@ export default function ItemListLayout({ filter }: props) {
     };
     window.addEventListener('click', unlock);
     return () => window.removeEventListener('click', unlock);
-    
+
   }, []);
 
   useTraccarSocket({
-    setPositions,
     setEvents,
     setGatewayData,
     setMessage,
     setLoginStatus,
   });
-
-  useEffect(() => {
-    setInterval(() => {
-      loadAll();
-    }, 5 * 1000);
-  }, []);
 
   useEffect(() => {
     events.forEach((event) => {
@@ -132,7 +121,6 @@ export default function ItemListLayout({ filter }: props) {
         timer: 2000,
         showConfirmButton: false
       });
-      await loadAll(); // 🔄 refresca todos los datos
     } catch (error: any) {
       Swal.fire({
         icon: 'error',
@@ -143,7 +131,7 @@ export default function ItemListLayout({ filter }: props) {
   };
 
   return (
-    devices.length > 0 || drivers.length > 0 || assigned.length > 0 ? (      
+    devices.length > 0 || drivers.length > 0 || assigned.length > 0 ? (
       devices
         .filter(device =>
           device.name?.toLowerCase().includes(filter?.toLowerCase() || "")
@@ -153,15 +141,15 @@ export default function ItemListLayout({ filter }: props) {
           return Number(hasEventB) - Number(hasEventA);
         })
         .map(device => {
-          const assignedDriver = assigned.find(a => a.deviceId === device.id);
-          const position = positions.find(p => p.id === device.positionId || p.deviceId === device.id);
-          const event = events.find(e => e.deviceId === device.id);
+          const assignedDriver = assigned.find(a => a.deviceId === device.idDevice);
+          const position = positions.find((p: any) => p.id === device.positionId || p.deviceId === device.idDevice);  
+          const event = events.find(e => e.deviceId === device.idDevice);
           return (
             <ItemList
-              key={device.id}
+              key={device.idDevice}
               deviceName={device.name || "N/A"}
-              driver={assignedDriver?.drivers?.map(d => d.name).join(', ') || 'No asignado'}
-              owner={device.attributes?.attributes?.Empresa || "No asignado"}
+              driver={assignedDriver?.drivers?.map((d: any) => d.name).join(', ') || 'No asignado'}
+              owner={localStorage.getItem("username")|| "No asignado"}
               status={device.status}
               charge={`${position?.attributes?.batteryLevel}%` || "N/A"}
               latitude={position?.latitude || "N/A"}

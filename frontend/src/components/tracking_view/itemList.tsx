@@ -50,7 +50,7 @@ export default function ItemList({ deviceName, owner, driver, latitude, longitud
         <h2 className='text-xl font-semibold'>{deviceName}</h2>
       </header>
       <section className='flex items-center justify-between'>
-        <p>Empresa:</p>
+        <p>Usuario:</p>
         <p>{owner}</p>
       </section>
       <section className='flex items-center justify-between'>

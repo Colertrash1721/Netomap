@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import Icons from '../ui/icons'
 import { usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import useLogout from '@/hooks/auth/useLogout'
 
 type props = {
@@ -10,16 +11,18 @@ type props = {
 }
 
 export default function Aside({ menu, children }: props) {
+    const router = useRouter();
     const { logout } = useLogout();
     const pathname = usePathname();
     const [isHome, setisHome] = useState(true)
     const [admin, setAdmin] = useState(false)
+    
 
     useEffect(() => {
         pathname === '/tracking_view' ? setisHome(true) : setisHome(false)
     }, [pathname])
 
-     useEffect(() => {
+    useEffect(() => {
         const rol = localStorage.getItem("rol");
         setAdmin(rol === "true");
     }, []);
@@ -34,12 +37,11 @@ export default function Aside({ menu, children }: props) {
                             <Icons name="bxs-home" link='tracking_view/' />
                             <Icons name="bxs-devices" link='devices' />
                             <Icons name="bx-user-circle" link='drivers' />
-                            {admin &&
-                                <>
-                                    <Icons name="bx-notepad" link='report' />
-                                    <Icons name="bxs-truck" link='route' />
-                                </> 
-                            }
+                            <>
+                                <Icons name="bx-notepad" link='report' />
+                                <Icons name="bxs-truck" link='route' />
+                            </>
+
                         </div>
                         <div>
                             <Icons name="bx-door-open" bg={true} onClick={logout} />

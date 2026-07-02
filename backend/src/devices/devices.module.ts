@@ -7,13 +7,14 @@ import { TraccarModule } from 'src/traccar/traccar.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Drivers } from 'src/driver/entities/driver.entity';
 import { Positions } from 'src/libs/databases/position.entity'; 
+import { Device } from './entity/device.entity';
 
 @Module({
   imports: [
     forwardRef(() => TraccarModule),
     forwardRef(() => AuthModule),
     RoutesModule,
-    TypeOrmModule.forFeature([Drivers, Positions])
+    TypeOrmModule.forFeature([Drivers, Positions, Device])
   ],
   controllers: [DevicesController],
   providers: [DevicesService],

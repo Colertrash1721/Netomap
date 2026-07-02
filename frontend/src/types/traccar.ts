@@ -1,14 +1,5 @@
-export type AssignedDriver = {
-    drivers: [
-        {
-            id?: number;
-            name?: string;
-        }
-    ]
-    deviceId?: number;
-}
-
 export type Device = {
+    idDevice: any;
     id?: number;
     positionId?: number;
     name?: string;
@@ -22,6 +13,11 @@ export type Device = {
         }
     };
     status?: string;
+}
+
+export type Drivers = {
+    id?: number;
+    name?: string;
 }
 
 export type Position = {
@@ -42,9 +38,4 @@ export type Event = {
         message?: string;
     }
     deviceId?: number;
-}
-
-export type Drivers = {
-    id?: number,
-    name?: string,
 }

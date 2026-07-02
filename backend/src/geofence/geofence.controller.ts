@@ -12,4 +12,10 @@ export class GeofenceController {
   async getAllGeofences() {
     return this.geofenceService.getGeofences();
   }
+
+  @Get('/sync')
+  async syncGeofences() {
+    await this.geofenceService.asignGeofenceFromTraccarToDB();
+    return { message: 'Geofences sincronizadas con Traccar' };
+  }
 }

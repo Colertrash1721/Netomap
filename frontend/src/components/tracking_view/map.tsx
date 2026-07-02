@@ -1,3 +1,5 @@
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
@@ -9,13 +11,16 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-
+import { useDevicesQuery, usePositionQuery } from '@/hooks/devices/useDevice'
+import MarkerClusterGroup from "react-leaflet-cluster";
+import { createClusterCustomIcon } from "../ui/customCluster";
 import { fetchDevices, fetchPositions } from "@/services/traccar/fetchDevices";
 import { useTraccarSocket } from "@/hooks/tracking/useTraccarDevice";
 import { Device, Position } from "@/types/traccar";
 import { fetchAllRoutes } from "@/services/routes/fetchRoutes";
-import { fetchGeofences } from "@/services/routes/fetchGeofences"; // ⬅️ NUEVO
-import { isPointInAnyGeofence, TraccarGeofence } from "@/utils/geofences";   // ⬅️ NUEVO
+import { fetchGeofences } from "@/services/routes/fetchGeofences";
+import { isPointInAnyGeofence, TraccarGeofence } from "@/utils/geofences";
+import SearchControl from "./searchControl";
 
 import haversine from "haversine-distance";
 import Swal from "sweetalert2";
@@ -55,8 +60,14 @@ function FlyToSelectedLocation({ lat, lon }: { lat: number; lon: number }) {
 }
 
 export default function ClientMap() {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
+  const { data: positionsData } = usePositionQuery();
+  const rol = typeof window !== 'undefined' ? localStorage.getItem("rol") : null;
+  const userId = typeof window !== 'undefined'
+    ? parseInt(localStorage.getItem("userId") || "0", 10)
+    : 0;
+  const { data: devicesData } = useDevicesQuery(rol, userId);
+  const positions = positionsData || [];
+  const devices = devicesData?.devices || [];
   const [routes, setRoutes] = useState<any[]>([]);
   const [routeLines, setRouteLines] = useState<[number, number][][]>([]);
   const [events, setEvents] = useState<any[]>([]);
@@ -73,11 +84,36 @@ export default function ClientMap() {
   const [selectedLon, setSelectedLon] = useState<number | null>(null);
 
   useTraccarSocket({
-    setPositions,
     setEvents,
     setGatewayData,
     setMessage,
     setLoginStatus,
+    onOutOfRoute: (data: any) => {
+      const deviceId = data?.deviceId;
+      const deviceName = data?.deviceName ?? `ID ${deviceId ?? ''}`.trim();
+
+      // anti-spam 30 min por device
+      const key = `offRoute_${deviceId ?? deviceName}`;
+      if ((window as any)[key]) return;
+      (window as any)[key] = true;
+
+      Swal.fire({
+        position: 'bottom-end',
+        icon: 'warning',
+        title: `Dispositivo fuera de ruta`,
+        text: `El dispositivo ${deviceName} se ha salido de la ruta.`,
+        timer: 10000,
+        timerProgressBar: true,
+        showConfirmButton: false,
+        backdrop: false
+      });
+
+      playAlarm();
+
+      setTimeout(() => {
+        delete (window as any)[key];
+      }, 60 * 1000 * 30);
+    },
   });
 
   useEffect(() => {
@@ -96,19 +132,6 @@ export default function ClientMap() {
 
     const init = async () => {
       try {
-        const dev = await fetchDevices();
-        const pos = await fetchPositions();
-        setDevices(dev);
-
-        // Mezcla inicial por deviceId (no reemplaza si ya hay socket corriendo)
-        setPositions(prev => {
-          const byDevice = new Map<number, Position>();
-          for (const p of prev) if (p.deviceId != null) byDevice.set(p.deviceId, p);
-          for (const p of pos) if (p.deviceId != null) byDevice.set(p.deviceId, p);
-          return Array.from(byDevice.values());
-        });
-
-        // ⬇️ NUEVO: cargar geocercas
         try {
           const fences = await fetchGeofences();
           setGeofences(fences);
@@ -116,7 +139,7 @@ export default function ClientMap() {
           console.error("Error cargando geocercas:", ge);
         }
 
-        await loadRoutes(dev);
+        await loadRoutes(devices);
       } catch (e) {
         console.error("Error cargando datos:", e);
       }
@@ -161,108 +184,28 @@ export default function ClientMap() {
   }, [routes]);
 
   useEffect(() => {
-    const distanceThreshold = 100; // metros
+    const stored = localStorage.getItem("email") || ""; // fallback ""
+    const normalized = stored.trim().toLowerCase();
 
-    const checkOutOfRoute = () => {
-      if (!devices.length || !positions.length || !routeLines.length) return;
+    if (normalized === "corripio@gmail.com") {
+      setEmail("doris.munoz@corripio.com.do");
+    } else {
+      setEmail(stored.trim()); // puede quedar "", pero nunca undefined
+    }
+  }, []);
 
-      devices.forEach((device) => {
-        const pos = positions.find(p => p.deviceId === device.id);
-        if (!pos) return;
-
-        const lat = Number(pos.latitude);
-        const lng = Number(pos.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-        // ⬇️ NUEVO: primero validar geocerca (si está dentro de alguna, NO alertar fuera de ruta)
-        if (geofences.length > 0 && isPointInAnyGeofence([lat, lng], geofences)) {
-          return; // está en geocerca ⇒ salta “fuera de ruta”
-        }
-
-        const currentPos: [number, number] = [lat, lng];
-
-        const route = routes.find(r => r.device_Name?.toLowerCase().trim() === device.name?.toLowerCase().trim());
-        if (!route) return;
-
-        const origin = [parseFloat(route.Startlatitud), parseFloat(route.Startlongitud)];
-        const destination = [parseFloat(route.Endlatitud), parseFloat(route.Endlongitud)];
-
-        const relatedLines = routeLines.filter(line => {
-          if (line.length < 2) return false;
-          const first = line[0];
-          const sameStart = haversine(
-            { latitude: first[0], longitude: first[1] },
-            { latitude: origin[0], longitude: origin[1] }
-          ) < 100;
-          const sameEnd = haversine(
-            { latitude: first[0], longitude: first[1] },
-            { latitude: destination[0], longitude: destination[1] }
-          ) < 100;
-          return sameStart && sameEnd;
-        });
-
-        const isOnRoute = relatedLines.some(line =>
-          line.some(point =>
-            haversine(
-              { latitude: point[0], longitude: point[1] },
-              { latitude: currentPos[0], longitude: currentPos[1] }
-            ) < distanceThreshold
-          )
-        );
-
-        if (!isOnRoute) {
-          if ((window as any)[`offRoute_${device.id}`]) return;
-
-          Swal.fire({
-            position: 'bottom-end',
-            icon: 'warning',
-            title: `Dispositivo fuera de ruta`,
-            text: `El dispositivo ${device.name} se ha salido de la ruta.`,
-            timer: 10000,
-            timerProgressBar: true,
-            showConfirmButton: false,
-            backdrop: false
-          });
-
-          playAlarm();
-          (window as any)[`offRoute_${device.id}`] = true;
-
-          setTimeout(() => {
-            delete (window as any)[`offRoute_${device.id}`];
-          }, 60 * 1000 * 30);
-        }
-      });
-    };
-
-    const interval = setInterval(checkOutOfRoute, 15000);
-    return () => clearInterval(interval);
-  }, [devices, positions, routeLines, routes, playAlarm, geofences]); // ⬅️ añade geofences a deps
-
-  useEffect(() => {
-  const stored = localStorage.getItem("email") || ""; // fallback ""
-  const normalized = stored.trim().toLowerCase();
-
-  if (normalized === "corripio@gmail.com") {
-    setEmail("doris.munoz@corripio.com.do");
-  } else {
-    setEmail(stored.trim()); // puede quedar "", pero nunca undefined
-  }
-  console.log(stored);
-  
-}, []);
-  
 
   useEffect(() => {
     const handlePostAutoReport = async (rawDeviceName: string, email: string) => {
-    try {
-      await postAutoReport(rawDeviceName, email);
-    } catch (e) {
-      console.error('Fallo generando auto-report:', e);
-    }
-  };
+      try {
+        await postAutoReport(rawDeviceName, email);
+      } catch (e) {
+        console.error('Fallo generando auto-report:', e);
+      }
+    };
     const distanceThreshold = 100;
-    positions.forEach((pos) => {
-      const device = devices.find(d => d.id === pos.deviceId);
+    positions.forEach((pos: any) => {
+      const device = devices.find(d => d.idDevice === pos.deviceId);
       const unlock = events.some(ev => ev?.deviceId === pos.deviceId && ev?.attributes?.alarm === 'unlock');
       const deviceName = device?.name;
       if (!deviceName) return;
@@ -344,30 +287,43 @@ export default function ClientMap() {
       scrollWheelZoom={true}
       style={{ width: "100%", height: "100%", zIndex: 0 }}
     >
+      <SearchControl marker={false} />
+
       <TileLayer
         attribution='&copy; OpenStreetMap contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
       {/* Dispositivos */}
-      {devices.map(device => {
-        const pos = positionsByDevice.get(device.id!);
-        if (!pos) return null;
+      <MarkerClusterGroup
+        chunkedLoading
+        maxClusterRadius={50}
+        spiderfyOnMaxZoom
+        showCoverageOnHover={false}
+        iconCreateFunction={createClusterCustomIcon}
+      >
+        {devices.map(device => {
+          const pos = positionsByDevice.get(device.idDevice!);
+          if (!pos) return null;
 
-        const lat = Number(pos.latitude);
-        const lng = Number(pos.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          const lat = Number(pos.latitude);
+          const lng = Number(pos.longitude);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-        return (
-          <Marker
-            key={`${device.id}-${lat.toFixed(5)}-${lng.toFixed(5)}`} // fuerza remount cuando cambian coords
-            position={[lat, lng] as [number, number]}
-            icon={truckIcon}
-          >
-            <Popup>{`Device: ${device.name} (ID: ${device.id})`}</Popup>
-          </Marker>
-        );
-      })}
+          return (
+            <Marker
+              key={`${device.idDevice}-${lat.toFixed(5)}-${lng.toFixed(5)}`}
+              position={[lat, lng]}
+              icon={truckIcon}
+            >
+              <Popup>
+                <strong>{device.name}</strong><br />
+                ID: {device.idDevice}
+              </Popup>
+            </Marker>
+          );
+        })}
+      </MarkerClusterGroup>
 
       {/* Marcadores de inicio y fin */}
       {routes.map((route: any, idx: number) => {
@@ -387,10 +343,10 @@ export default function ClientMap() {
         return (
           <div key={`route-markers-${idx}`}>
             <Marker position={start} icon={startIcon}>
-              <Popup>Inicio de ruta</Popup>
+              <Popup>Inicio de ruta {route.device_Name}</Popup>
             </Marker>
             <Marker position={end} icon={endIcon}>
-              <Popup>Fin de ruta</Popup>
+              <Popup>Fin de ruta {route.device_Name}</Popup>
             </Marker>
           </div>
         );

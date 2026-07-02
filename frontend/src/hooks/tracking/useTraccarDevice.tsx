@@ -4,13 +4,14 @@
 import { useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Position, Event } from '@/types/traccar';
+import { useQueryClient } from '@tanstack/react-query';
 
 type UseTraccarSocketProps = {
-  setPositions: React.Dispatch<React.SetStateAction<Position[]>>;
   setEvents: React.Dispatch<React.SetStateAction<Event[]>>;
   setGatewayData: React.Dispatch<React.SetStateAction<any>>;
   setMessage: React.Dispatch<React.SetStateAction<string>>;
   setLoginStatus: React.Dispatch<React.SetStateAction<string>>;
+  onOutOfRoute?: (data: any) => void;
 };
 
 
@@ -33,13 +34,32 @@ function mergePosition(prev: Position | undefined, incoming: Position): Position
   };
 }
 
+function upsertPositionByDeviceId(
+  prev: Position[] | undefined,
+  incoming: Position[]
+): Position[] {
+  const byDevice = new Map<number, Position>();
+  for (const p of (Array.isArray(prev) ? prev : [])) {
+    if (p?.deviceId != null) byDevice.set(p.deviceId, { ...p });
+  }
+
+  for (const np of (Array.isArray(incoming) ? incoming : [])) {
+    if (np?.deviceId == null) continue;
+    const prevP = byDevice.get(np.deviceId);
+    byDevice.set(np.deviceId, mergePosition(prevP, np));
+  }
+
+  return Array.from(byDevice.values());
+}
+
 export function useTraccarSocket({
-  setPositions,
   setEvents,
   setGatewayData,
   setMessage,
   setLoginStatus,
+  onOutOfRoute,
 }: UseTraccarSocketProps) {
+  const queryClient = useQueryClient();
   useEffect(() => {
     let socket: Socket | null = null;
 
@@ -55,30 +75,17 @@ export function useTraccarSocket({
       });
 
       socket.on('connect', () => {
-        console.log('✅ Conectado al Gateway');
         setLoginStatus('Conectado al Gateway');
       });
 
       socket.on('traccarEvent', (payload: TraccarGatewayPayload) => {
         // --- POSITIONS ---
         const incomingPositions = payload?.positions;
-        if (incomingPositions && incomingPositions.length) {
-          // Mezclamos por deviceId (no por id de posición)
-          setPositions((prev) => {
-            const byDevice = new Map<number, Position>();
-            // copia inmutable de las previas
-            for (const p of prev) {
-              if (p.deviceId != null) byDevice.set(p.deviceId, { ...p });
-            }
-            // mezcla de las nuevas
-            for (const np of incomingPositions) {
-              if (np.deviceId == null) continue;
-              const prevP = byDevice.get(np.deviceId);
-              const merged = mergePosition(prevP, np);
-              byDevice.set(np.deviceId, merged);
-            }
-            return Array.from(byDevice.values());
-          });
+        if (incomingPositions?.length) {
+          queryClient.setQueryData<Position[]>(
+            ['traccar', 'positions'],
+            (prev) => upsertPositionByDeviceId(prev!, incomingPositions)
+          );
         }
 
         // --- EVENTS ---
@@ -90,19 +97,20 @@ export function useTraccarSocket({
             for (const ne of incomingEvents) if (ne.deviceId != null) byDevice.set(ne.deviceId, { ...ne });
             return Array.from(byDevice.values());
           });
-          console.log('🚨 Events:', incomingEvents);
         }
 
         setGatewayData(payload);
       });
 
+      socket.on('outOfRoute', (data: any) => {
+        setMessage(`Dispositivo fuera de ruta: ${data?.deviceName || 'ID ' + data?.deviceId}`);
+      });
+
       socket.on('messageToClient', (msg: any) => {
-        console.log('💬 MessageToClient:', msg);
         setMessage(String(msg));
       });
 
       socket.on('disconnect', (reason) => {
-        console.log('❌ Desconectado del Gateway:', reason);
         setLoginStatus('Desconectado del Gateway');
       });
 
@@ -116,10 +124,9 @@ export function useTraccarSocket({
     return () => {
       try {
         socket?.disconnect();
-        console.log('🔒 Socket.IO cerrado');
       } catch (e) {
         console.warn('No se pudo cerrar el socket limpiamente:', e);
       }
     };
-  }, [setPositions, setEvents, setGatewayData, setMessage, setLoginStatus]);
+  }, [setEvents, setGatewayData, setMessage, setLoginStatus, onOutOfRoute]);
 }

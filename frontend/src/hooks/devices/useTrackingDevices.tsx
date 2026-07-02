@@ -1,44 +1,48 @@
 'use client'
-import { useEffect, useState } from 'react';
-import { fetchDevices, fetchDrivers, fetchAssignedDrivers, fetchPositions, fetchdifferentDevices, fetchdifferentDrivers } from '@/services/traccar/fetchDevices';
-import { Drivers, Device } from '@/types/traccar';
+import { useCallback, useEffect, useState } from 'react';
+import { fetchDevices, fetchDrivers, fetchAssignedDrivers, fetchPositions, fetchdifferentDevices, fetchdifferentDrivers, fetchDriverByUserId, fetchAssignedDevices, fetchAllUsers } from '@/services/traccar/fetchDevices';
+import { Device } from '@/types/traccar';
+import { Driver } from '@/types/driver';
 
 export function useTrackingDevice() {
+  const rol = localStorage.getItem("rol");
   const [devices, setDevices] = useState<any[]>([]);
   const [differentDevices, setDifferentDevices] = useState<Device[]>([]);
-  const [differentDrivers, setDifferentDrivers] = useState<Device[]>([]);
-  const [drivers, setDrivers] = useState<Drivers[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [assigned, setAssigned] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [d, dr, a, p, dd, ddr] = await Promise.all([
-          fetchDevices(),
-          fetchDrivers(),
-          fetchAssignedDrivers(),
-          fetchPositions(),
-          fetchdifferentDevices(),
-          fetchdifferentDrivers(),
-        ]);
-        setDevices(d);
-        setDrivers(dr);
-        setAssigned(a);
-        setPositions(p);
-        setDifferentDevices(dd.differentDevices);
-        setDifferentDrivers(ddr.differentDrivers)
-      } catch (err: any) {
-        setError(err.message || 'Error al cargar los datos');
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    load();
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [d, dr, a, p, dd, u] = await Promise.all([
+        rol === 'true' ? fetchDevices() : fetchAssignedDevices(),
+        rol === 'true' ? fetchDrivers() :  fetchDriverByUserId(parseInt(localStorage.getItem("userId") || "0")),
+        fetchAssignedDrivers(),
+        fetchPositions(),
+        fetchdifferentDevices(),
+        fetchAllUsers()
+      ]);
+      setDevices(d);
+      setDrivers(dr);
+      setAssigned(a);
+      setPositions(p);
+      setUsers(u);
+      setDifferentDevices(dd.differentDevices);
+    } catch (err: any) {
+      setError(err.message || 'Error al cargar los datos');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return { devices, differentDevices, differentDrivers, drivers, assigned, positions, loading, error };
+  useEffect(() => {
+    load(); 
+  }, [load]);
+
+  return { devices, differentDevices, drivers, assigned, positions, loading, error, users, refreshDrivers: load };
 }

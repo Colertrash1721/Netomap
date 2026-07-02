@@ -45,7 +45,7 @@ export class TraccarController {
     return { status: 'ok', via: 'GET forward' };
   }
 
-  // 👉 Para notificaciones tipo Webhook (si luego quieres usar POST)
+  // Para notificaciones tipo Webhook
   @Post('webhook')
   async handleWebhookPost(@Body() payload: any) {
     console.log('🌐 [POST] Webhook recibido de Traccar:', payload);
@@ -71,6 +71,11 @@ export class TraccarController {
   @Get('all')
   getAllEvents() {
     return this.traccarService.getAllEvents();
+  }
+
+  @Get('users')
+  getUsersFromTraccar() {
+    return this.traccarService.getUsersFromTraccar();
   }
 
   @Get('device/:deviceName')

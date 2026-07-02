@@ -1,0 +1,50 @@
+/* contenedor del buscador */
+.leaflet-control-geocoder {
+  background: white;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  border: none;
+}
+
+/* input */
+.leaflet-control-geocoder-form input {
+  border: none;
+  outline: none;
+  font-size: 14px;
+  padding: 8px 10px;
+  width: 220px;
+}
+
+.leaflet-control-geocoder-form input::placeholder {
+  color: #9ca3af !important;
+}
+
+
+.leaflet-control-geocoder input {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+
+/* icono de búsqueda */
+.leaflet-control-geocoder-icon {
+  filter: grayscale(100%);
+}
+
+/* resultados */
+.leaflet-control-geocoder-alternatives {
+  border-radius: 10px;
+  margin-top: 6px;
+  border: none;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+/* cada resultado */
+.leaflet-control-geocoder-alternatives li {
+  padding: 10px;
+  cursor: pointer;
+}
+
+.leaflet-control-geocoder-alternatives li:hover {
+  background: #f3f4f6;
+}

@@ -6,6 +6,8 @@ import { Concurrent } from './entities/concurrent.entity';
 import { CreateConcurrentDto } from './dto/create-concurrent.dto';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { Places } from './entities/places.entity';
+import axios from 'axios';
+import * as turf from '@turf/turf';
 
 @Injectable()
 export class RoutesService {
@@ -29,6 +31,95 @@ export class RoutesService {
 
   async findPlaceByName(placeName: string) {
     return this.placeRepository.findOne({ where: { name: placeName } });
+  }
+
+
+  private async fetchOsrmRouteGeoJson(
+    startLat: number,
+    startLng: number,
+    endLat: number,
+    endLng: number,
+  ) {
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${startLng},${startLat};${endLng},${endLat}` +
+      `?overview=full&geometries=geojson&alternatives=true`;
+
+    const { data } = await axios.get(url, { timeout: 15000 });
+
+    if (!data?.routes?.length) {
+      throw new HttpException('OSRM no devolvió rutas', HttpStatus.BAD_GATEWAY);
+    }
+
+    // routes[0] = la mejor ruta (principal)
+    const mainGeometry = data.routes[0].geometry; // {type:'LineString', coordinates:[...]}
+    const alternatives = data.routes.map((r) => ({
+      geometry: r.geometry,
+      distance: r.distance,
+      duration: r.duration,
+      weight: r.weight,
+    }));
+
+    return { mainGeometry, alternatives };
+  }
+
+  async isDeviceOnRoute(params: {
+    lat: number;
+    lng: number;
+    routeGeometry: any;     // GeoJSON LineString { type:'LineString', coordinates:[[lng,lat],...] }
+    thresholdMeters: number;
+  }) {
+    const { lat, lng, routeGeometry, thresholdMeters } = params;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (!routeGeometry?.coordinates?.length) return false;
+
+    // Punto actual del dispositivo (GeoJSON usa [lng, lat])
+    const pt = turf.point([lng, lat]);
+
+    // Línea de ruta (LineString)
+    const line = turf.lineString(routeGeometry.coordinates);
+
+    // Distancia mínima del punto a la línea (en metros)
+    const distMeters = turf.pointToLineDistance(pt, line, { units: 'meters' });
+
+    return distMeters <= thresholdMeters;
+  }
+
+  async isDeviceOnAnyRoute(params: {
+    lat: number;
+    lng: number;
+    mainGeometry: any;
+    alternatives?: any[];
+    thresholdMeters: number;
+  }) {
+    const { lat, lng, mainGeometry, alternatives, thresholdMeters } = params;
+
+    // 1) principal
+    const onMain = await this.isDeviceOnRoute({
+      lat,
+      lng,
+      routeGeometry: mainGeometry,
+      thresholdMeters,
+    });
+    if (onMain) return { onRoute: true, distMeters: null, which: 'main' };
+
+    // 2) alternativas (si existen)
+    const alts = Array.isArray(alternatives) ? alternatives : [];
+    for (let i = 0; i < alts.length; i++) {
+      const geom = alts[i]?.geometry;
+      if (!geom) continue;
+
+      const onAlt = await this.isDeviceOnRoute({
+        lat,
+        lng,
+        routeGeometry: geom,
+        thresholdMeters,
+      });
+      if (onAlt) return { onRoute: true, distMeters: null, which: `alt_${i}` };
+    }
+
+    return { onRoute: false, distMeters: null, which: null };
   }
 
   async deleteRouteByDeviceName(deviceName: string) {
@@ -87,28 +178,52 @@ export class RoutesService {
 
   async createRoute(createRouteDto: CreateRouteDto) {
     try {
+      const startLat = Number(createRouteDto.Startlatitud);
+      const startLng = Number(createRouteDto.Startlongitud);
+      const endLat = Number(createRouteDto.Endlatitud);
+      const endLng = Number(createRouteDto.Endlongitud);
+
+      if (![startLat, startLng, endLat, endLng].every(Number.isFinite)) {
+        throw new HttpException('Coordenadas inválidas', HttpStatus.BAD_REQUEST);
+      }
+
+      // ✅ 1) Llamar OSRM en el BACKEND
+      const { mainGeometry, alternatives } = await this.fetchOsrmRouteGeoJson(
+        startLat,
+        startLng,
+        endLat,
+        endLng,
+      );
+
       const foundDevice = await this.routeRepository.findOne({
-        where: {
-          device_Name: createRouteDto.device_Name,
-        },
+        where: { device_Name: createRouteDto.device_Name },
       });
 
       if (foundDevice) {
-        // Si ya existe, actualizar campos
+        // ✅ update
         foundDevice.rute_Name = createRouteDto.rute_Name;
         foundDevice.Startlatitud = createRouteDto.Startlatitud;
         foundDevice.Startlongitud = createRouteDto.Startlongitud;
         foundDevice.Endlatitud = createRouteDto.Endlatitud;
         foundDevice.Endlongitud = createRouteDto.Endlongitud;
-        // Puedes actualizar también fecha si quieres
+
+        // ✅ guarda la geometría calculada
+        foundDevice.routeGeometry = mainGeometry;
+        foundDevice.routeAlternatives = alternatives; // opcional
+        foundDevice.thresholdMeters = foundDevice.thresholdMeters ?? 100;
+
         return await this.routeRepository.save(foundDevice);
       }
 
-      // Si no existe, crear nueva
-      const newDevice = this.routeRepository.create(createRouteDto);
-      const savedDevice = await this.routeRepository.save(newDevice);
+      // ✅ create
+      const newDevice = this.routeRepository.create({
+        ...createRouteDto,
+        routeGeometry: mainGeometry,
+        routeAlternatives: alternatives, // opcional
+        thresholdMeters: 100,
+      });
 
-      return savedDevice;
+      return await this.routeRepository.save(newDevice);
     } catch (error) {
       throw new HttpException(
         'Error creating/updating route: ' + error.message,

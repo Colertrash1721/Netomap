@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, Repository } from 'typeorm';
 import { Positions } from 'src/libs/databases/position.entity';
 import { PositionType } from 'src/types/positionType';
+import { Device } from './entity/device.entity';
 
 
 @Injectable()
@@ -16,6 +17,7 @@ export class DevicesService {
         private readonly routesService: RoutesService,
         @Inject(forwardRef(() => TraccarService))
         private readonly traccarService: TraccarService,
+        @InjectRepository(Device) private readonly deviceRepository: Repository<Device>,
         @InjectRepository(Positions) private readonly positionsRepository: Repository<Positions>
     ) { }
     private readonly traccarApiUrl = process.env.My_Ip;
@@ -139,6 +141,22 @@ export class DevicesService {
         }
     }
 
+    async sincronizeDeviceToDB() {
+        const devices = await this.getAllDevices();
+
+        const savedDevices: Device[] = [];
+        for (const device of devices) {
+            const newDevice = this.deviceRepository.create({
+                idDevice: device.id,
+                name: device.name,
+                phone: device.phone,
+                uniqueId: device.uniqueId
+            })
+            savedDevices.push(newDevice);
+        }
+        await this.deviceRepository.save(savedDevices);
+    }
+
     async getDevicesFromTraccar(req: Request) {
         const userData = this.authService.getDataFromCookie(req);
         if (!userData) {
@@ -161,6 +179,35 @@ export class DevicesService {
         } catch (error) {
             console.log('Error fetching devices from Traccar:', error);
         }
+    }
+
+    async getAllDevicesFromBD(req: Request) {
+        const userData = this.authService.getDataFromCookie(req);
+        if (!userData) {
+            throw new HttpException('No session active', HttpStatus.UNAUTHORIZED);
+        }
+        return await this.deviceRepository.find();
+    }
+
+async getDeviceByIdFromBD(req: Request, deviceId: number) {
+        const userData = this.authService.getDataFromCookie(req);
+        if (!userData) {
+            throw new HttpException('No session active', HttpStatus.UNAUTHORIZED);
+        }
+        const device = await this.deviceRepository.findOne({ where: { idDevice: deviceId } });
+        if (!device) {
+            throw new HttpException(`No se encontró el dispositivo con ID ${deviceId} en la base de datos`, HttpStatus.NOT_FOUND);
+        }
+        return device;
+    }
+
+    async getDeviceByUserIdFromBD(req: Request) {
+        const userData = this.authService.getDataFromCookie(req);
+        if (!userData) {
+            throw new HttpException('No session active', HttpStatus.UNAUTHORIZED);
+        }
+        const { idUser } = userData;
+        return await this.deviceRepository.find({ where: { idUser } });
     }
 
     async getDriversFromTraccar(req: Request) {
@@ -374,7 +421,8 @@ export class DevicesService {
         const { idUser, emailUser, passwordUser } = userData;
         try {
             const headers = this.buildAuthHeaders(emailUser, passwordUser);
-            await axios.post(
+            await this.updateDeviceToUserDB(req, deviceId);
+            return await axios.post(
                 `${this.traccarApiUrl}/permissions`,
                 {
                     userId: idUser,
@@ -385,7 +433,24 @@ export class DevicesService {
         } catch (error) {
             throw new HttpException('Error asignando dispositivo', HttpStatus.CONFLICT)
         }
+    }
 
+    async updateDeviceToUserDB(req: Request, deviceId: number) {
+        const userData = this.authService.getDataFromCookie(req)
+        const { idUser, emailUser, passwordUser, admin } = userData;
+        if (!admin) {
+            throw new HttpException('Error, no estás autorizado para esto', HttpStatus.UNAUTHORIZED);
+        }
+        try {
+            const device = await this.deviceRepository.findOne({ where: { idDevice: deviceId } });
+            if (!device) {
+                throw new HttpException(`No se encontró el dispositivo con ID ${deviceId} en la base de datos`, HttpStatus.NOT_FOUND);
+            }
+            device.idUser = idUser;
+            await this.deviceRepository.save(device);
+        } catch (error) {
+            throw new HttpException('Error asignando dispositivo', HttpStatus.CONFLICT)
+        }
     }
 
     async asignDriverToUser(req: Request, driverId: number) {
@@ -486,21 +551,10 @@ export class DevicesService {
             throw new HttpException('Error, no estás autenticado', HttpStatus.UNAUTHORIZED);
 
         }
-        const { admin } = userData;
-
-        if (!admin) {
-            console.log("Error no autorizado");
-            throw new HttpException('Error, no estás autorizado para esto', HttpStatus.UNAUTHORIZED);
-
-        }
 
         try {
             const route = await this.routesService.findRouteByDeviceName(deviceName)
 
-            if (route) {
-                console.log(route);
-                throw new HttpException(`El dispositivo ${deviceName} tiene una ruta, por favor finalizar la ruta primero`, HttpStatus.BAD_REQUEST)
-            }
             const { matchingDevices } = await this.findDevicesByName(req, deviceName);
             if (matchingDevices.length === 0) {
                 throw new HttpException(`No se encontró el dispositivo ${deviceName}`, HttpStatus.NOT_FOUND);
@@ -531,9 +585,16 @@ export class DevicesService {
                 { headers },
             );
 
+            if (route) {
+                await this.routesService.deleteRouteByDeviceName(deviceName);
+                return {
+                    message: `Comando enviado correctamente al dispositivo, ruta finalizada correctamente ${deviceName}`,
+                };
+            }
             return {
-                message: `Comando enviado correctamente al dispositivo ${deviceName}`,
-            };
+                    message: `Comando enviado correctamente al dispositivo ${deviceName}`,
+                };
+
         } catch (error) {
             console.error('Error enviando comando al dispositivo:', error);
             throw new HttpException('Error enviando comando al dispositivo', HttpStatus.BAD_GATEWAY);
@@ -545,7 +606,7 @@ export class DevicesService {
         if (!deviceData) return;
         const routeData = await this.routesService.findRouteByDeviceName(deviceData.name)
         if (!routeData) return;
-        const position : Partial<Positions>= {
+        const position: Partial<Positions> = {
             idPosition: positionData.idPosition,
             deviceId: positionData.deviceId,
             latitude: positionData.latitude,
@@ -565,5 +626,31 @@ export class DevicesService {
         console.log("Se logro insertar el location");
         return newPosition;
     }
+
+    async asignUserToDevice(req: Request, deviceName: string, userId: number) {
+        const userData = this.authService.getDataFromCookie(req);
+        if (!userData) {
+            throw new HttpException('Error, no estás autenticado', HttpStatus.UNAUTHORIZED);
+        }
+        const { admin } = userData;
+        if (!admin) {
+            throw new HttpException('Error, no estás autorizado para esto', HttpStatus.UNAUTHORIZED);
+        }
+        try {
+            const device = await this.deviceRepository.findOne({where: {name: deviceName}});
+            if (!device) {
+                throw new HttpException(`No se encontró el dispositivo con nombre ${deviceName} en la base de datos`, HttpStatus.NOT_FOUND);
+            }
+            device.idUser = userId;
+            await this.deviceRepository.save(device);
+            return {
+                message: `Usuario asignado correctamente al dispositivo ${deviceName}`,
+            };
+        } catch (error) {
+            throw new HttpException('Error asignando usuario al dispositivo', HttpStatus.BAD_GATEWAY);
+        }
+    }
+
+    
 
 }

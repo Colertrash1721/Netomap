@@ -1,12 +1,23 @@
 import axios from 'axios';
 
 export async function fetchDevices() {
-  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/devices`, { withCredentials: true });
+  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/devices/all/BD`, { withCredentials: true });
+  return response.data;
+}
+
+export async function fetchAssignedDevices() {
+  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/devices/assigned/BD`, { withCredentials: true });
   return response.data;
 }
 
 export async function fetchDrivers() {
-  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/devices/drivers`, { withCredentials: true });
+  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/driver`, { withCredentials: true });
+  console.log(response.data);
+  return response.data;
+}
+
+export async function fetchDriverByUserId(userId: number) {
+  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/driver/user/${userId}`, { withCredentials: true });
   return response.data;
 }
 
@@ -40,7 +51,17 @@ export async function asignDeviceToUser(deviceId: number) {
   return response.data;
 }
 
+export async function asignUsertoDeviceService(deviceName: string, userId: number){
+  const response = await axios.post(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/devices/asignUserToDevice`, {deviceName, userId}, {withCredentials: true})
+  return response.data;
+}
+
 export async function asignDriverToUser(driverId: number) {
   const response = await axios.post(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/devices/asignDriverToUser`, {driverId}, {withCredentials: true})
+  return response.data;
+}
+
+export async function fetchAllUsers(){
+  const response = await axios.get(`${process.env.NEXT_PUBLIC_MY_BACKEND_API}/traccar/users`, {withCredentials: true})
   return response.data;
 }

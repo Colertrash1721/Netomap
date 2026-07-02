@@ -1,6 +1,5 @@
 'use client'
-import { asignDriverToUser } from "@/services/traccar/fetchDevices";
-import { Drivers } from "@/types/traccar";
+import { createDriverService } from "@/services/driver/createDriver";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
@@ -9,50 +8,39 @@ export function useDriver() {
     message: string;
   };
 
-  const asignDriver = async (drivers: Drivers[]) => {
-    console.log("Clickeado para asignar un conductor");
-
-    const options = drivers.map((driver) => `<option value="${driver.id}">${driver.name}</option>`).join('');
-    const { value: selectedDriverId, isConfirmed } = await Swal.fire({
-      title: 'Asignar dispositivo',
-      html: `
-            <select id="device-select" class="swal2-input">
-              <option value="" disabled selected>Selecciona un dispositivo</option>
-              ${options}
-            </select>
-          `,
-      focusConfirm: false,
-      showCancelButton: true,
-      preConfirm: () => {
-        const select = document.getElementById('device-select') as HTMLSelectElement;
-        return select?.value;
-      }
-    });
-    if (isConfirmed && selectedDriverId) {
-      const selectedDevice = drivers.find(d => d.id?.toString() === selectedDriverId);
-      const selectedDeviceName = selectedDevice?.name;
-      if (selectedDeviceName) {
-        try {
-          await asignDriverToUser(selectedDriverId)
-          Swal.fire({
-            title: "Logrado",
-            text: `Dispositivo ${selectedDeviceName} asignado correctamente`,
-            icon: "success",
-          });
-          if (typeof window !== 'undefined') {
-            window.location.reload();
+  const createDriver = async(refreshDrivers: () => void) => {
+    try{
+      const { value } = await Swal.fire<{ name: string; documentId: string }>({
+        title: 'Crear nuevo conductor',
+        html:
+          '<input id="swal-input1" class="swal2-input" placeholder="Nombre">' +
+          '<input id="swal-input2" class="swal2-input" placeholder="Cédula">' + 
+          '<input id="swal-input3" class="swal2-input" placeholder="Teléfono">' +
+          '<input id="swal-input4" class="swal2-input" placeholder="Numero de licencia">' +
+          '<input id="swal-input5" class="swal2-input" placeholder="Email">',
+        focusConfirm: false,
+        preConfirm: async () => {
+          const name = (document.getElementById('swal-input1') as HTMLInputElement).value;
+          const documentId = (document.getElementById('swal-input2') as HTMLInputElement).value;
+          const phone = (document.getElementById('swal-input3') as HTMLInputElement).value;
+          const licenseNumber = (document.getElementById('swal-input4') as HTMLInputElement).value;
+          const email = (document.getElementById('swal-input5') as HTMLInputElement).value;
+          if (!name || !documentId || !phone || !email || !licenseNumber) {
+            Swal.showValidationMessage('Por favor ingresa todos los campos');
+            return;
           }
-        } catch (error) {
-          const err = error as AxiosError<BackendError>;
-          Swal.fire({
-            title: 'Error',
-            text: err.response?.data?.message || 'Hubo un error en el proceso',
-            icon: 'error'
-          });
+          const response = await createDriverService({ name, documentId, phone, licenseNumber, email, userId: parseInt(localStorage.getItem("userId") || "0") });
+          Swal.fire('Éxito', 'Conductor creado exitosamente', 'success');
+          console.log(response);
+          refreshDrivers();
+          return { name, documentId, phone, licenseNumber, email };
         }
-      }
+      });
+    } catch (error) {
+      const axiosError = error as AxiosError<BackendError>;
+      const errorMessage = axiosError.response?.data.message || 'Error al crear el conductor';
+      Swal.fire('Error', errorMessage, 'error');
     }
   }
-
-  return { asignDriver }
+  return { createDriver };
 }
